@@ -1,6 +1,6 @@
 # Lab 5: Static Code Analysis — Hostel Room Allocation System
 
-**Your file:** `hostel_allocation.py`
+**File:** `hostel_allocation.py`
 
 Follow the lab handout for the full instructions.
 
