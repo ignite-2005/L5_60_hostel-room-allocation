@@ -2,7 +2,7 @@
 
 import html
 import os
-import random
+import secrets
 
 import yaml
 from flask import Flask, request
@@ -22,7 +22,10 @@ blocks:
 def load_config(text=CONFIG):
     """Load room configuration using the safe YAML loader."""
     config = yaml.safe_load(text)
-    if not isinstance(config, dict) or not isinstance(config.get("blocks"), dict):
+    if (
+        not isinstance(config, dict)
+        or not isinstance(config.get("blocks"), dict)
+    ):
         raise ValueError("Configuration must contain a blocks mapping.")
 
     rooms.clear()
@@ -95,7 +98,7 @@ def priority_order(students):
 
 def room_lottery(student_ids):
     """Return a randomized ordering of student identifiers."""
-    return random.sample(student_ids, len(student_ids))
+    return secrets.SystemRandom().sample(student_ids, len(student_ids))
 
 
 def vacant_beds():

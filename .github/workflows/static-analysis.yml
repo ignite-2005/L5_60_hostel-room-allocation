@@ -1,0 +1,71 @@
+name: Lab 5 Static Analysis
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies and tools
+        run: python -m pip install flask pyyaml pylint bandit flake8
+
+      - name: Prepare report directories
+        run: mkdir -p reports/before reports/after
+
+      - name: Generate reports for original source
+        run: |
+          python -m pylint reports/before/hostel_allocation.py > reports/before/pylint_report.txt 2>&1 || true
+          python -m bandit -r reports/before/hostel_allocation.py > reports/before/bandit_report.txt 2>&1 || true
+          python -m flake8 reports/before/hostel_allocation.py > reports/before/flake8_report.txt 2>&1 || true
+
+      - name: Generate reports for fixed source
+        run: |
+          python -m pylint hostel_allocation.py > reports/after/pylint_report.txt 2>&1 || true
+          python -m bandit -r hostel_allocation.py > reports/after/bandit_report.txt 2>&1 || true
+          python -m flake8 hostel_allocation.py > reports/after/flake8_report.txt 2>&1 || true
+
+      - name: Run syntax and behavior smoke tests
+        run: |
+          python -m py_compile hostel_allocation.py
+          python - <<'PY'
+          import hostel_allocation as app
+
+          app.load_config()
+          assert app.allocate_room("M1", "Student", "M", 2) == "A1"
+          assert app.allocate_room("F1", "Student", "F", 1) == "B1"
+          assert app.allocate_room("M2", "Student", "M", 2) == "A1"
+          assert app.allocate_room("M3", "Student", "M", 2) == "A2"
+          assert app.allocate_room("M4", "Student", "M", 2) == "A2"
+          assert app.allocate_room("M5", "Student", "M", 2) == "A3"
+          assert app.allocate_room("M6", "Student", "M", 2) == "A3"
+          assert app.allocate_room("M7", "Student", "M", 2) is None
+          assert app.vacate_room("M1") is True
+          assert "M1" not in app.rooms["A1"]["occupants"]
+          assert app.allocate_room("M1", "Student", "M", 2) == "A1"
+          assert app.allocate_room("BAD", "Student", "M", "2") is None
+          client = app.app.test_client()
+          response = client.get("/room?id=%3Cscript%3E")
+          assert b"&lt;script&gt;" in response.data
+          print("Smoke tests passed.")
+          PY
+
+      - name: Upload static analysis reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab5-static-analysis-reports
+          path: reports/
+          if-no-files-found: error
