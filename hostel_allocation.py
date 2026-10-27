@@ -1,4 +1,5 @@
-"""Hostel room allocation demo with safer defaults."""
+"""Hostel room allocation demo with safer defaults and validation."""
+
 import html
 import os
 import random
@@ -19,8 +20,14 @@ blocks:
 
 
 def load_config(text=CONFIG):
-    """Load trusted-format configuration using the safe YAML loader."""
+    """Load room configuration using the safe YAML loader."""
     config = yaml.safe_load(text)
+    if not isinstance(config, dict) or not isinstance(config.get("blocks"), dict):
+        raise ValueError("Configuration must contain a blocks mapping.")
+
+    rooms.clear()
+    allocations.clear()
+    waitlist.clear()
     for block, info in config["blocks"].items():
         for number in range(1, info["rooms"] + 1):
             rooms[f"{block}{number}"] = {
@@ -33,21 +40,30 @@ def load_config(text=CONFIG):
 
 
 def allocate_room(student_id, name, gender, year, preferred=None):
-    """Allocate a student to a compatible room, or add them to the waitlist."""
+    """Allocate a student to a compatible room or add them to the waitlist."""
     if not isinstance(year, int) or isinstance(year, bool):
         return None
+    if student_id in allocations:
+        return allocations[student_id]["room"]
+
     preferred_rooms = preferred or []
-    for room_no in preferred_rooms + list(rooms):
-        room = rooms.get(room_no)
+    room_order = list(dict.fromkeys(preferred_rooms + list(rooms)))
+    for room_number in room_order:
+        room = rooms.get(room_number)
         if room is None or room["gender"] != gender:
             continue
         if len(room["occupants"]) >= room["capacity"]:
             continue
-        if student_id in allocations:
-            return allocations[student_id]["room"]
         room["occupants"].append(student_id)
-        allocations[student_id] = {"name": name, "room": room_no, "year": year}
-        return room_no
+        allocations[student_id] = {
+            "name": name,
+            "room": room_number,
+            "year": year,
+        }
+        if student_id in waitlist:
+            waitlist.remove(student_id)
+        return room_number
+
     if student_id not in waitlist:
         waitlist.append(student_id)
     return None
@@ -65,7 +81,7 @@ def vacate_room(student_id):
 
 
 def monthly_fee(student_id, days_stayed):
-    """Calculate full monthly fees for the completed 30-day periods."""
+    """Calculate fees for completed 30-day periods."""
     if days_stayed < 0 or student_id not in allocations:
         return None
     room = rooms[allocations[student_id]["room"]]
@@ -83,7 +99,7 @@ def room_lottery(student_ids):
 
 
 def vacant_beds():
-    """Count unoccupied beds in rooms that are not fully occupied."""
+    """Count unoccupied beds across all rooms."""
     return sum(
         room["capacity"] - len(room["occupants"])
         for room in rooms.values()
@@ -104,7 +120,10 @@ def room_lookup():
     """Render a safely escaped room lookup response."""
     student_id = request.args.get("id", "")
     allocation = allocations.get(student_id, "No allocation found")
-    return f"<h1>Room for {html.escape(student_id)}: {html.escape(str(allocation))}</h1>"
+    return (
+        f"<h1>Room for {html.escape(student_id)}: "
+        f"{html.escape(str(allocation))}</h1>"
+    )
 
 
 def run_portal():
@@ -127,7 +146,10 @@ def main():
     print("Occupants of A1 after S2 left:", rooms["A1"]["occupants"])
     print("Fee for S1, 45 days:", monthly_fee("S1", 45))
     students = [{"year": 1}, {"year": 4}, {"year": 2}]
-    print("Priority (seniors first):", [s["year"] for s in priority_order(students)])
+    print(
+        "Priority (seniors first):",
+        [student["year"] for student in priority_order(students)],
+    )
     print("Lottery:", room_lottery(["S6", "S7", "S8"]))
     print("Vacant beds:", vacant_beds())
     print("Warden DB configured:", connect_warden_db())
